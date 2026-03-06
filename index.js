@@ -1,3 +1,5 @@
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
@@ -19,7 +21,7 @@ const app = express()
 // Middleware
 app.use(
   cors({
-    origin: [process.env.CLIENT_DOMAIN],
+    origin: [process.env.CLIENT_DOMAIN,'http://localhost:5173'],
     credentials: true,
     optionSuccessStatus: 200,
   })
@@ -48,8 +50,8 @@ const client = new MongoClient(process.env.MONGODB_URI, {
   },
 })
 
-async function run() {
-  try {
+// async function run() {
+//   try {
     const db = client.db('mealsDB')
     const mealsCollection = db.collection('meals')
     const ordersCollection = db.collection('orders')
@@ -90,7 +92,7 @@ async function run() {
     // Approve a role request
     app.patch('/role-requests/approve/:id', verifyJWT, async (req, res) => {
       const { id } = req.params
-      const { userEmail, role } = req.body
+      const { userEmail,photoUrl,name, role } = req.body
       console.log(userEmail, role, id)
       try {
         const request = await roleRequestCollection.findOne({ _id: new ObjectId(id) })
@@ -111,6 +113,8 @@ async function run() {
           await chefCollection.insertOne({
             chefId,
             userEmail,
+            photoUrl,
+            name,
             createdAt: new Date(),
             verified: true,
             rating: 0,
@@ -119,11 +123,15 @@ async function run() {
 
 
         }
-        await usersCollection.updateOne(
-          { email: userEmail },
-          { $set: updateUserData }
-        )
-
+       await usersCollection.updateOne(
+  { email: userEmail },
+  {
+    $set: {
+      email: userEmail,
+      ...updateUserData
+    }
+  }
+)
         // Update request status
         await roleRequestCollection.updateOne(
           { _id: new ObjectId(id) },
@@ -169,7 +177,7 @@ async function run() {
       try {
         const result = await usersCollection.findOne({ email: req.tokenEmail })
         if (!result) return res.status(404).send({ message: 'User not found' })
-        res.send({ role: result.role }) // শুধু role পাঠাও
+        res.send({ role: result.role, result }) 
       } catch (err) {
         console.error(err)
         res.status(500).send({ message: 'Server error', err })
@@ -223,6 +231,54 @@ async function run() {
 
 
 
+    // ====================== CHEFS ======================
+    // GET featured chefs
+    app.get('/chefs/featured', async (req, res) => {
+      try {
+        const chefs = await chefCollection
+          .find({ verified: true })
+          .sort({ rating: -1, totalOrders: -1 })
+
+          .toArray()
+        res.send(chefs)
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Server error' })
+      }
+    })
+
+    // GET all chefs
+    app.get('/chefs', async (req, res) => {
+      try {
+        const chefs = await chefCollection
+          .find({ verified: true })
+          .sort({ createdAt: -1 })
+          .toArray()
+        res.send(chefs)
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Server error' })
+      }
+    })
+
+    // GET single chef by ID
+    app.get('/chefs/:id', async (req, res) => {
+      try {
+        const { id } = req.params
+        const chef = await chefCollection.findOne({ 
+          $or: [
+            { _id: ObjectId.isValid(id) ? new ObjectId(id) : null },
+            { chefId: id }
+          ]
+        })
+        if (!chef) return res.status(404).send({ message: 'Chef not found' })
+        res.send(chef)
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Server error' })
+      }
+    })
+
     // ====================== MEALS ======================
     app.post('/add-meal', verifyJWT, async (req, res) => {
       const mealData = req.body
@@ -239,6 +295,21 @@ async function run() {
       res.send(result)
     })
 
+    // GET popular meals
+    app.get('/meals/popular', async (req, res) => {
+      try {
+        const meals = await mealsCollection
+          .find({})
+          .sort({ averageRating: -1, totalReviews: -1 })
+          .limit(8)
+          .toArray()
+        res.send(meals)
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Server error' })
+      }
+    })
+
 
     app.get('/meals/:id', async (req, res) => {
       const id = req.params.id
@@ -248,10 +319,26 @@ async function run() {
       res.send(result)
     })
 
+    // GET meals by chef ID
+    app.get('/meals/chef/:chefId', async (req, res) => {
+      try {
+        const { chefId } = req.params
+        const meals = await mealsCollection
+          .find({ chefId: chefId })
+          .sort({ createdAt: -1 })
+          .toArray()
+        res.send(meals)
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Server error' })
+      }
+    })
+
     // ====================== REVIEWS ======================
     app.post('/reviews', async (req, res) => {
       const reviewData = req.body
       reviewData.date = new Date().toISOString()
+      reviewData.type = 'food_review' // Differentiate from chef reviews
 
       // Insert review
       const result = await reviewsCollection.insertOne(reviewData)
@@ -273,11 +360,26 @@ async function run() {
     // GET /reviews/latest
     app.get('/reviews/latest', async (req, res) => {
       const reviews = await reviewsCollection
-        .find({})
+        .find({ type: { $ne: 'chef_review' } })
         .sort({ date: -1 })
         .limit(5)
         .toArray();
       res.send(reviews);
+    });
+
+    // GET featured reviews (highest rated)
+    app.get('/reviews/featured', async (req, res) => {
+      try {
+        const reviews = await reviewsCollection
+          .find({ type: { $ne: 'chef_review' } })
+          .sort({ rating: -1, date: -1 })
+          .limit(6)
+          .toArray();
+        res.send(reviews);
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Server error' })
+      }
     });
 
     app.patch('/reviews/:id', async (req, res) => {
@@ -303,7 +405,10 @@ async function run() {
     app.get('/reviews/:mealId', async (req, res) => {
       const mealId = req.params.mealId
       const reviews = await reviewsCollection
-        .find({ foodId: mealId })
+        .find({ 
+          foodId: mealId,
+          type: { $ne: 'chef_review' } // Exclude chef reviews
+        })
         .sort({ date: -1 })
         .toArray()
       res.send(reviews)
@@ -312,7 +417,10 @@ async function run() {
 
     app.get('/my-review/:email', async (req, res) => {
       const email = req.params.email
-      const orders = await reviewsCollection.find({ userEmail: email }).sort({ orderTime: -1 }).toArray()
+      const orders = await reviewsCollection.find({ 
+        userEmail: email,
+        type: { $ne: 'chef_review' }
+      }).sort({ date: -1 }).toArray()
       res.send(orders)
     })
 
@@ -321,6 +429,57 @@ async function run() {
       const query = { _id: new ObjectId(id) }
       const result = await reviewsCollection.deleteOne(query);
       res.send(result);
+    })
+
+    // ====================== CHEF REVIEWS ======================
+    // POST chef review
+    app.post('/reviews/chef', async (req, res) => {
+      try {
+        const { chefId, chefName, rating, comment, reviewerName, userEmail } = req.body
+        
+        if (!chefId || !rating || !comment) {
+          return res.status(400).send({ message: 'Missing required fields' })
+        }
+
+        const chefReviewData = {
+          chefId,
+          chefName,
+          rating: parseInt(rating),
+          comment,
+          reviewerName: reviewerName || 'Anonymous',
+          userEmail: userEmail || 'unknown',
+          date: new Date().toISOString(),
+          type: 'chef_review'
+        }
+
+        const result = await reviewsCollection.insertOne(chefReviewData)
+        
+        // Update chef rating
+        await updateChefRating(chefId)
+
+        res.send({ success: true, review: result })
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Server error', err })
+      }
+    })
+
+    // GET chef reviews
+    app.get('/reviews/chef/:chefId', async (req, res) => {
+      try {
+        const { chefId } = req.params
+        const reviews = await reviewsCollection
+          .find({ 
+            chefId: chefId,
+            type: 'chef_review'
+          })
+          .sort({ date: -1 })
+          .toArray()
+        res.send(reviews)
+      } catch (err) {
+        console.error(err)
+        res.status(500).send({ message: 'Server error' })
+      }
     })
 
     // ====================== REVIEWS & RATING ======================
@@ -353,6 +512,44 @@ async function run() {
 
       await mealsCollection.updateOne(
         { _id: new ObjectId(foodId) },
+        { $set: ratingData }
+      )
+    }
+
+    // Update chef rating from reviews
+    const updateChefRating = async (chefId) => {
+      const stats = await reviewsCollection
+        .aggregate([
+          { 
+            $match: { 
+              chefId: chefId,
+              type: 'chef_review'
+            } 
+          },
+          {
+            $group: {
+              _id: '$chefId',
+              avgRating: { $avg: '$rating' },
+              totalReviews: { $sum: 1 },
+            },
+          },
+        ])
+        .toArray()
+
+      let ratingData = {
+        rating: 0,
+        totalReviews: 0,
+      }
+
+      if (stats.length > 0) {
+        ratingData = {
+          rating: Number(stats[0].avgRating.toFixed(1)),
+          totalReviews: stats[0].totalReviews,
+        }
+      }
+
+      await chefCollection.updateOne(
+        { chefId: chefId },
         { $set: ratingData }
       )
     }
@@ -483,6 +680,56 @@ async function run() {
           pendingOrders,
           deliveredOrders,
           totalPaymentAmount,
+        })
+      } catch (error) {
+        console.error(error)
+        res.status(500).send({ message: 'Server error' })
+      }
+    })
+
+    // ====================== PUBLIC STATISTICS ======================
+    app.get('/stats', async (req, res) => {
+      try {
+        // Total users
+        const totalUsers = await usersCollection.countDocuments()
+
+        // Total meals
+        const totalMeals = await mealsCollection.countDocuments()
+
+        // Total chefs
+        const totalChefs = await chefCollection.countDocuments({ verified: true })
+
+        // Total orders
+        const totalOrders = await ordersCollection.countDocuments()
+
+        // Average rating (from meals)
+        const ratingAgg = await mealsCollection.aggregate([
+          {
+            $group: {
+              _id: null,
+              avgRating: { $avg: '$averageRating' },
+            },
+          },
+        ]).toArray()
+
+        const averageRating = ratingAgg.length > 0 ? Number(ratingAgg[0].avgRating.toFixed(1)) : 0
+
+        // Cities covered (from meals delivery areas)
+        const citiesAgg = await mealsCollection.aggregate([
+          { $unwind: '$deliveryArea' },
+          { $group: { _id: '$deliveryArea' } },
+          { $count: 'totalCities' }
+        ]).toArray()
+
+        const citiesCovered = citiesAgg.length > 0 ? citiesAgg[0].totalCities : 0
+
+        res.send({
+          totalUsers,
+          totalMeals,
+          totalChefs,
+          totalOrders,
+          averageRating,
+          citiesCovered
         })
       } catch (error) {
         console.error(error)
@@ -692,12 +939,12 @@ async function run() {
     // Ping MongoDB
     // await client.db('admin').command({ ping: 1 })
     // console.log('Successfully connected to MongoDB!')
-  } catch (error) {
-    console.error('MongoDB connection error:', error)
-  }
-}
+//   } catch (error) {
+//     console.error('MongoDB connection error:', error)
+//   }
+// }
 
-run().catch(console.dir)
+// run().catch(console.dir)
 
 app.get('/', (req, res) => {
   res.send('LocalChefBazaar Server is running smoothly!')
