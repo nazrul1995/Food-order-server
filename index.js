@@ -21,7 +21,7 @@ const app = express()
 // Middleware
 app.use(
   cors({
-    origin: [process.env.CLIENT_DOMAIN,'http://localhost:5173'],
+    origin: ['localhost:5173', process.env.CLIENT_DOMAIN],
     credentials: true,
     optionSuccessStatus: 200,
   })
@@ -282,6 +282,7 @@ const client = new MongoClient(process.env.MONGODB_URI, {
     // ====================== MEALS ======================
     app.post('/add-meal', verifyJWT, async (req, res) => {
       const mealData = req.body
+      console.log(mealData)
       const result = await mealsCollection.insertOne(mealData)
       res.send(result)
     })
@@ -622,7 +623,8 @@ const client = new MongoClient(process.env.MONGODB_URI, {
     // Get seller Created Meals
     app.get('/seller-created-meals/:email', async (req, res) => {
       const email = req.params.email
-      const meals = await mealsCollection.find({ userEmail: email }).sort({ orderTime: -1 }).toArray()
+      console.log(email)
+      const meals = await mealsCollection.find({ createdBy: email }).sort({ orderTime: -1 }).toArray()
       res.send(meals)
     })
     app.get('/orders/total-payment/stats', async (req, res) => {
@@ -805,21 +807,39 @@ const client = new MongoClient(process.env.MONGODB_URI, {
 
 
 
-    app.patch("/update-meal/:id", async (req, res) => {
-      const id = req.params.id;
-      const updatedMeal = req.body;
-      const userEmail = updatedMeal.userEmail;
+  app.patch("/update-meal/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const updatedMeal = req.body;
+    const userEmail = updatedMeal.userEmail;
 
-      const filter = {
-        _id: new ObjectId(id),
-        userEmail: userEmail
-      };
-      const updateDoc = {
-        $set: updatedMeal,
-      };
-      const result = await mealsCollection.updateOne(filter, updateDoc);
-      res.send(result);
+    const filter = {
+      _id: new ObjectId(id),
+      createdBy: userEmail
+    };
+
+    const updateDoc = {
+      $set: {
+        ...updatedMeal,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    const result = await mealsCollection.updateOne(
+      filter,
+      updateDoc
+    );
+
+    res.send(result);
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({
+      message: "Failed to update meal",
+      error
     });
+  }
+});
 
 
     // Payment endpoints
