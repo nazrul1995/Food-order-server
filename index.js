@@ -990,7 +990,7 @@ app.post("/payhere/initiate", verifyJWT, async (req, res) => {
     amount,
     currency,
     mealName: order.mealName,
-    notifyUrl: `https://webhook.site/7b2979b9-5332-46b1-9ab1-860d11ca6071/payhere-notify`,
+    notifyUrl: `${process.env.SERVER_DOMAIN}/payhere-notify`,
   });
 });
 
