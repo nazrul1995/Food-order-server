@@ -957,7 +957,7 @@ app.patch("/update-meal/:id", async (req, res) => {
 app.post("/payhere/initiate", verifyJWT, async (req, res) => {
   const { orderId } = req.body;
   console.log("/payhere/initiate", req.body)
-  // pull the real order + price from DB — never trust client price
+
   const order = await ordersCollection.findOne({ _id: new ObjectId(orderId) });
   console.log(order)
   if (!order) return res.status(404).send({ message: "Order not found" });
@@ -990,7 +990,7 @@ app.post("/payhere/initiate", verifyJWT, async (req, res) => {
     amount,
     currency,
     mealName: order.mealName,
-    notifyUrl: `${process.env.SERVER_DOMAIN}/payhere-notify`,
+    notifyUrl: `https://webhook.site/7b2979b9-5332-46b1-9ab1-860d11ca6071/payhere-notify`,
   });
 });
 
