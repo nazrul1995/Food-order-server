@@ -28,7 +28,7 @@ app.use(
   })
 )
 app.use(express.json())
-
+app.use(express.urlencoded({ extended: true }));
 // jwt middlewares
 const verifyJWT = async (req, res, next) => {
   const token = req?.headers?.authorization?.split(' ')[1]
@@ -94,7 +94,6 @@ app.get('/role-requests', verifyJWT, async (req, res) => {
 app.patch('/role-requests/approve/:id', verifyJWT, async (req, res) => {
   const { id } = req.params
   const { userEmail, photoUrl, name, role } = req.body
-  console.log(userEmail, role, id)
   try {
     const request = await roleRequestCollection.findOne({ _id: new ObjectId(id) })
     if (!request) return res.status(404).send({ message: 'Request not found' })
@@ -370,7 +369,6 @@ app.get('/chefs/:id', async (req, res) => {
 // ====================== MEALS ======================
 app.post('/add-meal', verifyJWT, async (req, res) => {
   const mealData = req.body
-  console.log(mealData)
   const result = await mealsCollection.insertOne(mealData)
   res.send(result)
 })
@@ -711,7 +709,6 @@ app.post('/orders', async (req, res) => {
 // Get seller Created Meals
 app.get('/seller-created-meals/:email', async (req, res) => {
   const email = req.params.email
-  console.log(email)
   const meals = await mealsCollection.find({ createdBy: email }).sort({ orderTime: -1 }).toArray()
   res.send(meals)
 })
@@ -957,42 +954,9 @@ app.patch("/update-meal/:id", async (req, res) => {
 });
 
 
-// Payment endpoints
-// app.post('/create-checkout-session', async (req, res) => {
-//   const paymentInfo = req.body
-//   const amount = parseInt(paymentInfo.price) * 100
-//   const trackingId = `TRK-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-//   const session = await stripe.checkout.sessions.create({
-//     line_items: [
-//       {
-//         price_data: {
-//           currency: 'usd',
-//           product_data: {
-//             name: paymentInfo.mealName,
-//           },
-//           unit_amount: amount,
-//         },
-//         quantity: paymentInfo.quantity,
-//       },
-//     ],
-//     customer_email: paymentInfo.customerEmail,
-//     mode: 'payment',
-//     metadata: {
-//       mealId: paymentInfo.mealId,
-//       mealName: paymentInfo.mealName,
-//       trackingId: trackingId,
-//     },
-//     success_url: `${process.env.CLIENT_DOMAIN}/dashboard/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-//     cancel_url: `${process.env.CLIENT_DOMAIN}`,
-//   })
-
-//   res.send({ url: session.url })
-// })
-
 app.post("/payhere/initiate", verifyJWT, async (req, res) => {
   const { orderId } = req.body;
-  console.log(req)
-  console.log(req.body)
+  console.log("/payhere/initiate", req.body)
   // pull the real order + price from DB — never trust client price
   const order = await ordersCollection.findOne({ _id: new ObjectId(orderId) });
   console.log(order)
@@ -1031,6 +995,7 @@ app.post("/payhere/initiate", verifyJWT, async (req, res) => {
 });
 
 app.post("/payhere-notify", async (req, res) => {
+  console.log ("/payhere-notify", req.body)
   const {
     merchant_id,
     order_id,
@@ -1174,17 +1139,6 @@ app.get('/payments', verifyJWT, async (req, res) => {
   res.send(payments);
 })
 
-
-
-// Ping MongoDB
-// await client.db('admin').command({ ping: 1 })
-// console.log('Successfully connected to MongoDB!')
-//   } catch (error) {
-//     console.error('MongoDB connection error:', error)
-//   }
-// }
-
-// run().catch(console.dir)
 
 app.get('/', (req, res) => {
   res.send('LocalChefBazaar Server is running smoothly!')
