@@ -8,7 +8,7 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb')
 // const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY)
 const admin = require('firebase-admin')
 
-const port = process.env.PORT || 3000
+const port = process.env.PORT || 5000
 
 // Firebase Admin Setup
 const decoded = Buffer.from(process.env.FB_SERVICE_KEY, 'base64').toString('utf-8')
@@ -53,7 +53,7 @@ const client = new MongoClient(process.env.MONGODB_URI, {
 
 // async function run() {
 //   try {
-const db = client.db('mealsDB')
+const db = client.db('orderFoodDb')
 const mealsCollection = db.collection('meals')
 const ordersCollection = db.collection('orders')
 const usersCollection = db.collection('users')
@@ -1141,7 +1141,7 @@ app.get('/payments', verifyJWT, async (req, res) => {
 
 
 app.get('/', (req, res) => {
-  res.send('LocalChefBazaar Server is running smoothly!')
+  res.send('Food Ordering Server is running smoothly!')
 })
 
 app.listen(port, () => {
